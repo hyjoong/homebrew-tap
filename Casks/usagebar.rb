@@ -1,6 +1,6 @@
 cask "usagebar" do
-  version "0.8.3,20"
-  sha256 "5c09074e7c0e99c681f637e3d16b72d2db53c8737e3cb96adcc2a4b8ea275b58"
+  version "0.8.4,21"
+  sha256 "bd003977ff95f7f0d888f8275bfcb2b61df28d420d45487ed01a763feafe8c7a"
 
   url "https://github.com/hyjoong/UsageBar/releases/download/v#{version.csv.first}/UsageBar-#{version.csv.first}-#{version.csv.second}.zip"
   name "UsageBar"
