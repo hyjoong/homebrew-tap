@@ -15,7 +15,7 @@ cask "usagebar" do
 
   auto_updates true
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "UsageBar.app"
 
@@ -23,7 +23,7 @@ cask "usagebar" do
     "~/Library/Application Support/UsageBar",
     "~/Library/Caches/dev.hyjoong.usagebar",
     "~/Library/HTTPStorages/dev.hyjoong.usagebar",
-    "~/Library/Preferences/UsageBar.Preferences.plist",
     "~/Library/Preferences/dev.hyjoong.usagebar.plist",
+    "~/Library/Preferences/UsageBar.Preferences.plist",
   ]
 end
