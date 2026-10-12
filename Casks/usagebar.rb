@@ -14,7 +14,8 @@ cask "usagebar" do
   end
 
   auto_updates true
-  depends_on arch: :arm64
+  # Rosetta reports Intel even though the Mac can run the arm64 app.
+  depends_on arch: :arm64 unless Hardware::CPU.in_rosetta2?
   depends_on macos: :sonoma
 
   app "UsageBar.app"

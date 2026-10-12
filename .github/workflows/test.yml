@@ -1,0 +1,22 @@
+name: Test cask architecture requirements
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture:
+    runs-on: macos-latest
+    env:
+      HOMEBREW_DEVELOPER: "1"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check native Apple Silicon, Rosetta, and Intel eligibility
+        run: brew ruby tests/usagebar_arch_test.rb
+      - name: Check cask style
+        run: brew style Casks/usagebar.rb
