@@ -10,7 +10,14 @@ brew install --cask hyjoong/tap/usagebar
 | --- | --- |
 | `usagebar` | [UsageBar](https://github.com/hyjoong/UsageBar): Claude Code and Codex subscription limits in the menu bar, with work receipts. |
 
-Updating: bump `version` and `sha256` in `Casks/usagebar.rb` to the values of the new release ZIP (see `SHA256SUMS.txt` in the UsageBar release output).
+Updating: the **Bump UsageBar cask** workflow checks the latest UsageBar release every hour. When its version, build or checksum differs from the cask, it downloads the ZIP, verifies the checksum, the app's versions, the Developer ID signature and the notarization ticket, runs the tests below, and commits the new `version` and `sha256`. It refuses a build that fails any check. To run it now, or to rehearse it without committing:
+
+```sh
+gh workflow run bump-usagebar.yml -R hyjoong/homebrew-tap
+gh workflow run bump-usagebar.yml -R hyjoong/homebrew-tap -f verify_only=true
+```
+
+A manual bump still works; the workflow then finds the cask current and does nothing.
 
 Run the architecture regression tests on macOS with Homebrew installed:
 

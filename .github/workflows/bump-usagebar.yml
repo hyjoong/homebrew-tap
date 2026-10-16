@@ -1,0 +1,116 @@
+name: Bump UsageBar cask
+
+# Hourly safety net: when the latest UsageBar release differs from the cask (version, build or
+# checksum), verify the new zip and update the cask. Uses only this repository's own token.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      verify_only:
+        description: "Run the whole verification even when the cask is current, without committing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-usagebar
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.latest.outputs.needed }}
+      version: ${{ steps.latest.outputs.version }}
+      build: ${{ steps.latest.outputs.build }}
+      asset: ${{ steps.latest.outputs.asset }}
+      sha256: ${{ steps.latest.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the latest release with the cask
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_ONLY: ${{ inputs.verify_only || false }}
+        run: |
+          set -euo pipefail
+          asset=$(gh api repos/hyjoong/UsageBar/releases/latest \
+            --jq '[.assets[].name | select(test("^UsageBar-[0-9]+(\\.[0-9]+)+-[0-9]+\\.zip$"))] | first // empty')
+          if [ -z "$asset" ]; then
+            echo "The latest release has no UsageBar-<version>-<build>.zip; nothing to do."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          stem=${asset#UsageBar-}; stem=${stem%.zip}
+          version=${stem%-*}; build=${stem##*-}
+          curl -fsSL -o release.zip "https://github.com/hyjoong/UsageBar/releases/download/v${version}/${asset}"
+          sha=$(sha256sum release.zip | cut -d' ' -f1)
+          current_version=$(sed -nE 's/^  version "([^"]+)"$/\1/p' Casks/usagebar.rb)
+          current_sha=$(sed -nE 's/^  sha256 "([0-9a-f]{64})"$/\1/p' Casks/usagebar.rb)
+          echo "Latest release: ${version},${build} ${sha}"
+          echo "Cask:           ${current_version} ${current_sha}"
+          needed=false
+          if [ "$current_version" != "${version},${build}" ] || [ "$current_sha" != "$sha" ]; then needed=true; fi
+          if [ "$VERIFY_ONLY" = "true" ]; then needed=true; fi
+          {
+            echo "needed=$needed"; echo "version=$version"; echo "build=$build"
+            echo "asset=$asset"; echo "sha256=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+  bump:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    runs-on: macos-latest
+    env:
+      HOMEBREW_DEVELOPER: "1"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      VERSION: ${{ needs.check.outputs.version }}
+      BUILD: ${{ needs.check.outputs.build }}
+      ASSET: ${{ needs.check.outputs.asset }}
+      SHA256: ${{ needs.check.outputs.sha256 }}
+      VERIFY_ONLY: ${{ inputs.verify_only || false }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the release zip
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          curl -fsSL -o "$work/release.zip" "https://github.com/hyjoong/UsageBar/releases/download/v${VERSION}/${ASSET}"
+          test "$(shasum -a 256 "$work/release.zip" | cut -d' ' -f1)" = "$SHA256"
+          ditto -x -k "$work/release.zip" "$work/app"
+          app="$work/app/UsageBar.app"
+          plist="$app/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist")" = "$VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$plist")" = "$BUILD"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$plist")" = "dev.hyjoong.usagebar"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -q 'TeamIdentifier=6W9KP3964C'
+          xcrun stapler validate "$app"
+          echo "Verified UsageBar ${VERSION} (${BUILD}): checksum, versions, Developer ID signature and notarization ticket."
+      - name: Update the cask
+        run: |
+          set -euo pipefail
+          sed -i '' -E "s/^  version \"[^\"]+\"$/  version \"${VERSION},${BUILD}\"/" Casks/usagebar.rb
+          sed -i '' -E "s/^  sha256 \"[0-9a-f]{64}\"$/  sha256 \"${SHA256}\"/" Casks/usagebar.rb
+          grep -q "^  version \"${VERSION},${BUILD}\"$" Casks/usagebar.rb
+          grep -q "^  sha256 \"${SHA256}\"$" Casks/usagebar.rb
+          git diff --stat
+      - name: Check native Apple Silicon, Rosetta, and Intel eligibility
+        run: brew ruby tests/usagebar_arch_test.rb
+      - name: Check cask style
+        run: brew style Casks/usagebar.rb
+      - name: Commit
+        if: env.VERIFY_ONLY != 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then echo "Cask already current."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update UsageBar to ${VERSION} build ${BUILD}"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
